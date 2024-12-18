@@ -36,6 +36,48 @@ def validate_lot_number(lot_number):
     connection.close()
     return result is not None
 
+# Function to check status based on lot_number and/or product_type
+def get_lot_status(lot_number=None, product_type=None):
+    connection = connect_to_database()
+    if not connection:
+        return None
+
+    cursor = connection.cursor(dictionary=True)
+    query = "SELECT lot_number, product, status FROM lots WHERE 1=1"
+    params = []
+
+    if lot_number:
+        query += " AND lot_number = %s"
+        params.append(lot_number)
+
+    if product_type:
+        query += " AND product = %s"
+        params.append(product_type)
+
+    cursor.execute(query, params)
+    results = cursor.fetchall()
+    connection.close()
+    return results
+
+# Function to handle the check status button click
+def check_status():
+    lot_number = lot_number_entry.get().strip()
+    product_type = product_type_entry.get().strip()
+
+    if not lot_number and not product_type:
+        messagebox.showwarning("Warning", "Please enter at least one of Lot Number or Product Type.")
+        return
+
+    results = get_lot_status(lot_number, product_type)
+    if not results:
+        messagebox.showinfo("Result", "No matching lots found.")
+    else:
+        result_message = "\n".join([
+            f"Lot Number: {row['lot_number']}, Product: {row['product']}, Status: {row['status']}"
+            for row in results
+        ])
+        messagebox.showinfo("Result", result_message)
+
 # Function to check if auto-update is running and run it if not
 def run_auto_update():
     for process in psutil.process_iter(['cmdline']):
@@ -102,64 +144,17 @@ def run_coa_filling():
     except Exception as e:
         messagebox.showerror("Error", f"Failed to fill COA: {e}")
 
-# Function to reset the database and last_processed_row.txt
-def reset_database():
-    try:
-        connection = connect_to_database()
-        if not connection:
-            return
-
-        cursor = connection.cursor()
-        reset_commands = """
-        SET FOREIGN_KEY_CHECKS = 0;
-        DELETE FROM electrical_resistance;
-        DELETE FROM icp;
-        DELETE FROM solid_content;
-        DELETE FROM cnt_content;
-        DELETE FROM particle_size;
-        DELETE FROM viscosity;
-        DELETE FROM moisture;
-        DELETE FROM magnetic_impurity;
-        DELETE FROM lots;
-        ALTER TABLE electrical_resistance AUTO_INCREMENT = 1;
-        ALTER TABLE icp AUTO_INCREMENT = 1;
-        ALTER TABLE solid_content AUTO_INCREMENT = 1;
-        ALTER TABLE cnt_content AUTO_INCREMENT = 1;
-        ALTER TABLE particle_size AUTO_INCREMENT = 1;
-        ALTER TABLE viscosity AUTO_INCREMENT = 1;
-        ALTER TABLE moisture AUTO_INCREMENT = 1;
-        ALTER TABLE magnetic_impurity AUTO_INCREMENT = 1;
-        ALTER TABLE lots AUTO_INCREMENT = 1;
-        SET FOREIGN_KEY_CHECKS = 1;
-        """
-        for command in reset_commands.split(';'):
-            if command.strip():
-                cursor.execute(command)
-        connection.commit()
-
-        with open("last_processed_row.txt", "w") as file:
-            file.write("0")
-
-        messagebox.showinfo("Info", "Database and last_processed_row.txt reset successfully.")
-    except mysql.connector.Error as err:
-        messagebox.showerror("Error", f"Database reset failed: {err}")
-    except Exception as e:
-        messagebox.showerror("Error", f"An unexpected error occurred: {e}")
-    finally:
-        if connection and connection.is_connected():
-            connection.close()
-
 # GUI setup
 root = tk.Tk()
 root.title("QC Database GUI")
-root.geometry("400x300")
+root.geometry("400x400")
 
 # Buttons and their commands
 auto_update_button = tk.Button(root, text="Run Auto Update Hourly", command=run_auto_update)
 auto_update_button.pack(pady=10)
 
-# import_csv_button = tk.Button(root, text="Import CSV Now", command=run_import_csv)
-# import_csv_button.pack(pady=10)
+import_csv_button = tk.Button(root, text="Import CSV Now", command=run_import_csv)
+import_csv_button.pack(pady=10)
 
 coa_button = tk.Button(root, text="Generate COA", command=run_coa_filling)
 coa_button.pack(pady=10)
@@ -170,7 +165,19 @@ lot_number_label.pack()
 lot_number_entry = tk.Entry(root)
 lot_number_entry.pack(pady=5)
 
-reset_button = tk.Button(root, text="Reset Database", command=reset_database)
-reset_button.pack(pady=20)
+# Entry for checking status
+status_lot_number_label = tk.Label(root, text="Status - Lot Number:")
+status_lot_number_label.pack()
+lot_number_entry = tk.Entry(root)
+lot_number_entry.pack(pady=5)
 
+status_product_type_label = tk.Label(root, text="Status - Product Type:")
+status_product_type_label.pack()
+product_type_entry = tk.Entry(root)
+product_type_entry.pack(pady=5)
+
+check_status_button = tk.Button(root, text="Check Status", command=check_status)
+check_status_button.pack(pady=10)
+
+# Run the GUI loop
 root.mainloop()
